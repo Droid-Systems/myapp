@@ -1,0 +1,736 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────────────────────────
+// Landing Page Content (Admin-managed)
+// ──────────────────────────────────────────────
+
+model TeamMember {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  role      String
+  image     String
+  instagram String?
+  linkedin  String?
+  facebook  String?
+  tiktok    String?
+  order     Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Testimonial {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  designation String
+  content     String
+  image       String
+  star        Int      @default(5)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model InvestmentOption {
+  id              String           @id @default(auto()) @map("_id") @db.ObjectId
+  title           String
+  image           String
+  minInvestment   String
+  description     String
+  link            String
+  order           Int              @default(0)
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  userInvestments UserInvestment[]
+}
+
+// ──────────────────────────────────────────────
+// Users & Auth
+// ──────────────────────────────────────────────
+
+model User {
+  id               String    @id @default(auto()) @map("_id") @db.ObjectId
+  email            String    @unique
+  passwordHash     String?   // DEPRECATED: Use Account model instead (kept for migration)
+  authProvider     String    @default("local") // DEPRECATED: Use Account model instead
+  googleId         String?   // DEPRECATED: Use Account model instead
+  firstName        String
+  lastName         String
+  phone            String    @default("")
+  dateOfBirth      String    @default("")
+  nationality      String    @default("")
+  address          String    @default("")
+  city             String    @default("")
+  state            String    @default("")
+  postalCode       String    @default("")
+  country          String    @default("")
+  profilePhoto     String?
+  bio              String    @default("")
+  occupation       String    @default("")
+  role             String    @default("user") // user | admin | superadmin
+  emailVerified    Boolean   @default(false)
+  twoFactorEnabled      Boolean   @default(false)
+  twoFactorSecret       String?
+  backupCodes           String[]  @default([])
+  requireTwoFactorLogin Boolean   @default(false)
+  kycStatus        String    @default("none") // none | pending | verified | rejected
+  balance          Float     @default(0)
+  profits             Float     @default(0)
+  referralCommissions Float     @default(0)
+  bonus               Float     @default(0)
+  referralCode     String    @unique
+  referredById     String?   @db.ObjectId
+  referredBy       User?     @relation("Referrals", fields: [referredById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  referrals        User[]    @relation("Referrals")
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  accounts        Account[]  // Multi-provider authentication
+  sessions        Session[]
+  oAuthTokens     OAuthToken[]
+  settings        UserSettings?
+  tickets         SupportTicket[]
+  ticketMessages  TicketMessage[]
+  attachments     FileAttachment[]
+  sentTransfers   Transfer[]       @relation("SentTransfers")
+  receivedTransfers Transfer[]     @relation("ReceivedTransfers")
+  transactions    Transaction[]
+  investments     UserInvestment[]
+  notifications   Notification[]
+  referralsMade   Referral[]       @relation("ReferralsMade")
+  referralsReceived Referral[]     @relation("ReferralsReceived")
+  fundOperations  FundOperation[]
+  propertyReviews PropertyReview[]
+  kyc             KYC?
+  documentSigningRequests DocumentSigningRequest[]
+  forumPosts      ForumPost[]    @relation("ForumPosts")
+  forumComments   ForumComment[] @relation("ForumComments")
+  forumLikes      ForumLike[]    @relation("ForumLikes")
+
+}
+
+model Account {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String    @db.ObjectId
+  user          User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  provider      String    // "credentials" | "google"
+  providerId    String?   // OAuth provider's unique ID (e.g., Google's "sub" claim)
+
+  // Only for "credentials" provider
+  passwordHash  String?
+
+  // OAuth-specific data (optional)
+  accessToken   String?
+  refreshToken  String?
+  expiresAt     DateTime?
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Unique constraints
+  @@unique([userId, provider])  // One provider per user
+  @@index([provider, providerId])  // Fast lookup by provider + providerId
+}
+
+model Session {
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId         String    @db.ObjectId
+  user           User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token          String    @unique
+  previousToken  String?
+  tokenRotatedAt DateTime?
+  device         String    @default("Unknown")
+  browser        String    @default("Unknown")
+  deviceModel    String?   // Detailed device model (e.g., "iPhone 15 Pro", "Samsung Galaxy S24")
+  os             String?   // Operating system name (e.g., "iOS", "Android", "Windows")
+  osVersion      String?   // OS version (e.g., "17.2", "14.0", "11")
+  ipAddress      String    @default("")
+  location       String    @default("Unknown")
+  lastActive     DateTime  @default(now())
+  expiresAt      DateTime
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+}
+
+model Otp {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  email     String
+  code      String
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email])
+}
+
+model PasswordReset {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  email     String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([email])
+}
+
+model OAuthToken {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  token        String   @unique
+  userId       String   @db.ObjectId
+  user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  metadata     String?  // JSON string for session conflict info
+  createdAt    DateTime @default(now())
+}
+
+// ──────────────────────────────────────────────
+// User Settings
+// ──────────────────────────────────────────────
+
+model UserSettings {
+  id                 String  @id @default(auto()) @map("_id") @db.ObjectId
+  userId             String  @unique @db.ObjectId
+  user               User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailNotifications Boolean @default(true)
+  pushNotifications  Boolean @default(true)
+  marketingEmails    Boolean @default(false)
+  loginAlerts        Boolean @default(true)
+  sessionTimeout     Int     @default(30) // minutes
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+// ──────────────────────────────────────────────
+// Support Tickets
+// ──────────────────────────────────────────────
+
+model SupportTicket {
+  id            String          @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String?         @db.ObjectId
+  user          User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject       String
+  category      String
+  priority      String          @default("medium") // low | medium | high | urgent
+  status        String          @default("open")   // open | in_progress | resolved | closed
+  whatsappJid   String?                            // Baileys JID e.g. "2348012345678@s.whatsapp.net"
+  whatsappPhone String?                            // Human-readable e.g. "+2348012345678"
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  messages      TicketMessage[]
+}
+
+model TicketMessage {
+  id            String           @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId      String           @db.ObjectId
+  ticket        SupportTicket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  senderId      String?          @db.ObjectId
+  sender        User?            @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  senderType    String           @default("user") // user | admin
+  message       String
+  whatsappMsgId String?                           // Baileys msg ID — deduplication
+  createdAt     DateTime         @default(now())
+  attachments   FileAttachment[]
+}
+
+model FileAttachment {
+  id        String         @id @default(auto()) @map("_id") @db.ObjectId
+  messageId String?        @db.ObjectId
+  message   TicketMessage? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String         @db.ObjectId
+  user      User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  size      Int
+  type      String
+  url       String
+  context   String         @default("support") // support | profile
+  createdAt DateTime       @default(now())
+}
+
+// ──────────────────────────────────────────────
+// Transfers & Transactions
+// ──────────────────────────────────────────────
+
+model Transfer {
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
+  senderId       String    @db.ObjectId
+  sender         User?     @relation("SentTransfers", fields: [senderId], references: [id], onDelete: Cascade)
+  recipientId    String?   @db.ObjectId
+  recipient      User?     @relation("ReceivedTransfers", fields: [recipientId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  recipientEmail String
+  amount         Float
+  note           String    @default("")
+  status         String    @default("pending") // pending | completed | failed
+  createdAt      DateTime  @default(now())
+  completedAt    DateTime?
+}
+
+model Transaction {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String   @db.ObjectId
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String   // deposit | withdrawal | transfer_sent | transfer_received | investment
+  amount      Float
+  status      String   @default("pending") // pending | completed | failed
+  description String   @default("")
+  reference   String   @default("")
+  createdAt   DateTime @default(now())
+}
+
+// ──────────────────────────────────────────────
+// Investments (User's)
+// ──────────────────────────────────────────────
+
+model UserInvestment {
+  id                 String            @id @default(auto()) @map("_id") @db.ObjectId
+  userId             String            @db.ObjectId
+  user               User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  investmentOptionId String?           @db.ObjectId
+  investmentOption   InvestmentOption? @relation(fields: [investmentOptionId], references: [id])
+  propertyId         String?           @db.ObjectId
+  property           Property?         @relation(fields: [propertyId], references: [id])
+  amount             Float
+  expectedROI        Float             @default(0)
+  monthlyReturn      Float             @default(0)
+  status             String            @default("active") // active | completed | cancelled
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+}
+
+// ──────────────────────────────────────────────
+// Properties
+// ──────────────────────────────────────────────
+
+model Property {
+  id               String           @id @default(auto()) @map("_id") @db.ObjectId
+  title            String
+  images           String[]         @default([])
+  location         String
+  price            Float            @default(0)
+  type             String           @default("residential") // residential | commercial | land
+  category         String           @default("airbnb_arbitrage") // airbnb_arbitrage | airbnb_mortgage | for_sale (for_sale only valid for individual)
+  investmentType   String           @default("individual")  // individual | pooled
+  minInvestment    Float            @default(0)
+  maxInvestment    Float            @default(0)
+  targetAmount     Float            @default(0)
+  currentFunded    Float            @default(0)
+  investorCount    Int              @default(0)
+  expectedROI      Float            @default(0)
+  monthlyReturn    Float            @default(0)
+  duration         Int              @default(12)
+  bedrooms         Int              @default(0)
+  bathrooms        Int              @default(0)
+  parking          Int              @default(0)
+  sqft             Int              @default(0)
+  description      String           @default("")
+  features         String[]         @default([])
+  investmentStatus String           @default("available") // available | fully-funded | coming-soon | closed
+  riskLevel        String           @default("low")        // low | medium | high
+  isActive         Boolean          @default(true)
+  isFeatured       Boolean          @default(false)
+  subject          String           @default("")
+  managerName      String           @default("")
+  managerRole      String           @default("")
+  managerPhone     String           @default("")
+  managerPhoto     String?
+  // ── Map coordinates ──
+  latitude                Float?
+  longitude               Float?
+  // ── Interior (for_sale) ──
+  fullBathrooms           Int?
+  heating                 String[]  @default([])
+  cooling                 String[]  @default([])
+  appliancesIncluded      String[]  @default([])
+  laundry                 String[]  @default([])
+  interiorFeatures        String[]  @default([])
+  flooring                String[]  @default([])
+  windows                 String[]  @default([])
+  basement                String    @default("")
+  fireplaceCount          Int       @default(0)
+  fireplaceFeatures       String[]  @default([])
+  totalStructureArea      String    @default("")
+  totalLivableArea        String    @default("")
+  // ── Property exterior (for_sale) ──
+  levels                  String    @default("")
+  stories                 Int       @default(0)
+  patioAndPorch           String[]  @default([])
+  exteriorFeatures        String[]  @default([])
+  poolFeatures            String[]  @default([])
+  hasSpa                  Boolean   @default(false)
+  spaFeatures             String[]  @default([])
+  fencing                 String[]  @default([])
+  // ── Lot (for_sale) ──
+  lotFeatures             String[]  @default([])
+  additionalStructures    String    @default("")
+  parcelNumber            String    @default("")
+  // ── Construction (for_sale) ──
+  homeType                String    @default("")
+  propertySubtype         String    @default("")
+  constructionMaterials   String[]  @default([])
+  foundation              String[]  @default([])
+  roof                    String[]  @default([])
+  yearBuilt               Int       @default(0)
+  // ── Utilities (for_sale) ──
+  sewer                   String[]  @default([])
+  water                   String[]  @default([])
+  utilitiesForProperty    String[]  @default([])
+  // ── Community & HOA (for_sale) ──
+  communityFeatures       String[]  @default([])
+  security                String[]  @default([])
+  subdivision             String    @default("")
+  hasHOA                  Boolean   @default(false)
+  hoaFee                  String    @default("")
+  region                  String    @default("")
+  // ── Bid tracking (for_sale) ──
+  bidCount            Int       @default(0)
+  recentBidAmount     Float     @default(0)
+  // ── Financial & Listing (for_sale) ──
+  pricePerSqft            String    @default("")
+  taxAssessedValue        String    @default("")
+  annualTaxAmount         String    @default("")
+  dateOnMarket            String    @default("")
+  daysOnMarket            Int       @default(0)
+  listingTerms            String[]  @default([])
+  // ── Market Value (for_sale) ──
+  zestimate               String    @default("")
+  estimatedSalesRangeLow  String    @default("")
+  estimatedSalesRangeHigh String    @default("")
+  rentZestimate           String    @default("")
+  zestimateChangePercent  String    @default("")
+  zestimateChangeYears    Int       @default(0)
+  priceHistory            Json?
+  // ── Climate Risks (for_sale) ──
+  floodZone               String    @default("")
+  floodZoneDescription    String    @default("")
+  fireRisk                String    @default("")
+  windRisk                String    @default("")
+  airQualityRisk          String    @default("")
+  firstStreetUrl          String    @default("")
+  // ── Getting Around (for_sale) ──
+  walkScore               Int?
+  walkScoreDescription    String    @default("")
+  bikeScore               Int?
+  bikeScoreDescription    String    @default("")
+  transitScore            Int?
+  transitScoreDescription String    @default("")
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  userInvestments  UserInvestment[]
+  reviews          PropertyReview[]
+}
+
+// ──────────────────────────────────────────────
+// Property Reviews (logged-in users only)
+// ──────────────────────────────────────────────
+
+model PropertyReview {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  propertyId String   @db.ObjectId
+  property   Property? @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  userId     String   @db.ObjectId
+  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating     Int      // 1-5
+  title      String   @default("")
+  body       String
+  isApproved Boolean  @default(true) // auto-approved; admin can hide via approve endpoint
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([propertyId, userId]) // one review per user per property
+  @@index([propertyId, isApproved])
+}
+
+// ──────────────────────────────────────────────
+// Notifications
+// ──────────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // system | transfer | investment | security | support
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// ──────────────────────────────────────────────
+// Referrals
+// ──────────────────────────────────────────────
+
+model Referral {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  referrerId     String   @db.ObjectId
+  referrer       User?    @relation("ReferralsMade", fields: [referrerId], references: [id], onDelete: Cascade)
+  referredUserId String   @db.ObjectId
+  referredUser   User?    @relation("ReferralsReceived", fields: [referredUserId], references: [id], onDelete: Cascade)
+  status         String   @default("pending") // pending | completed
+  reward         Float    @default(0)
+  createdAt      DateTime @default(now())
+}
+
+// ──────────────────────────────────────────────
+// Fund Deposits & Withdrawals
+// ──────────────────────────────────────────────
+
+model FundOperation {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String    @db.ObjectId
+  user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String    // deposit | withdrawal
+  method      String    // card | bank | crypto
+  amount      Float
+  fee         Float     @default(0)
+  status      String    @default("pending") // pending | processing | completed | failed
+  details     String    @default("{}") // JSON string for method-specific data
+  reference   String    @default("")
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+}
+
+// ──────────────────────────────────────────────
+// Payment Wallets (Admin-managed)
+// ──────────────────────────────────────────────
+
+model PaymentWallet {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  type          String   // bank | crypto
+  method        String   // For crypto: BTC | ETH | USDT | USDC, For bank: bank_transfer
+  name          String   // e.g., "Bitcoin Wallet", "Main Bank Account"
+  address       String   // Wallet address or account number
+  network       String   @default("") // For crypto: Bitcoin Network, ERC20, etc.
+  bankName      String   @default("") // For bank transfers
+  accountName   String   @default("") // For bank transfers
+  swiftCode     String   @default("") // For bank transfers
+  routingNumber String   @default("") // For bank transfers
+  instructions  String   @default("") // Additional instructions
+  qrCodeData    String   @default("") // QR code data for easy scanning
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// ──────────────────────────────────────────────
+// PDF Documents (Dynamic Menu Management)
+// ──────────────────────────────────────────────
+
+model PdfDocument {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  title        String   // Display name in menu
+  description  String   @default("") // Optional description
+  filePath     String   // Server file path (backend reference)
+  fileUrl      String   // Public URL path (frontend uses this)
+  displayOrder Int      @default(0) // Order in menu (lower = first)
+  category     String   @default("General") // Optional: group PDFs by category
+  isActive     Boolean  @default(true) // Toggle visibility
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([isActive, displayOrder])
+  @@index([category, displayOrder])
+}
+
+// ──────────────────────────────────────────────
+// Document Signing Requests
+// ──────────────────────────────────────────────
+
+model DocumentSigningRequest {
+  id                String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId            String    @db.ObjectId
+  user              User      @relation(fields: [userId], references: [id])
+  title             String
+  description       String    @default("")
+  userMessage       String    @default("")
+  documentUrl       String
+  signedDocumentUrl String?
+  signatureImageUrl String?
+  status            String    @default("pending") // pending | signed | rejected
+  adminNotes        String    @default("")
+  fields            Json      @default("[]")      // DocField[] — admin-defined field zones
+  signedAt          DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([userId, status])
+  @@index([status, createdAt])
+}
+
+// ──────────────────────────────────────────────
+// Forum
+// ──────────────────────────────────────────────
+
+model ForumPost {
+  id            String         @id @default(auto()) @map("_id") @db.ObjectId
+  title         String
+  content       String
+  images        String[]       @default([])
+  authorId      String         @db.ObjectId
+  author        User           @relation("ForumPosts", fields: [authorId], references: [id], onDelete: Cascade)
+  likesCount    Int            @default(0)
+  commentsCount Int            @default(0)
+  isPinned      Boolean        @default(false)
+  isDeleted     Boolean        @default(false)
+  lastCommentAt DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  comments      ForumComment[]
+  likes         ForumLike[]
+
+  @@index([isDeleted, isPinned, createdAt])
+  @@index([authorId])
+}
+
+model ForumComment {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  content     String
+  images      String[]  @default([])
+  authorId    String    @db.ObjectId
+  author      User      @relation("ForumComments", fields: [authorId], references: [id], onDelete: Cascade)
+  postId      String    @db.ObjectId
+  post        ForumPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  // Depth-1 (Instagram-style):
+  // parentId = null  → top-level comment
+  // parentId = root comment id → reply (always points to root, never to another reply)
+  parentId    String?   @db.ObjectId
+  // replyToId = the specific comment/reply being responded to (for @mention display)
+  replyToId   String?   @db.ObjectId
+  replyToName String?   // snapshot: "FirstName LastName" of person being replied to
+  likesCount  Int       @default(0)
+  isDeleted   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  likes       ForumLike[]
+
+  @@index([postId, parentId])
+  @@index([authorId])
+}
+
+model ForumLike {
+  id        String        @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String        @db.ObjectId
+  user      User          @relation("ForumLikes", fields: [userId], references: [id], onDelete: Cascade)
+  postId    String?       @db.ObjectId
+  post      ForumPost?    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  commentId String?       @db.ObjectId
+  comment   ForumComment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  createdAt DateTime      @default(now())
+
+  @@index([userId, postId])
+  @@index([userId, commentId])
+}
+
+// ──────────────────────────────────────────────
+// Newsletter Subscribers
+// ──────────────────────────────────────────────
+
+model NewsletterSubscriber {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  email         String   @unique
+  firstName     String   @default("")
+  lastName      String   @default("")
+  isSubscribed  Boolean  @default(true)
+  subscribedAt  DateTime @default(now())
+  unsubscribedAt DateTime?
+  source        String   @default("website") // website | landing-page | referral
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([isSubscribed])
+}
+// ──────────────────────────────────────────────
+// Live Chat (Website Widget ↔ Admin WhatsApp)
+// ──────────────────────────────────────────────
+
+model ChatConfig {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  isOnline  Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+}
+
+model ChatSession {
+  id           String        @id @default(auto()) @map("_id") @db.ObjectId
+  sessionToken String        @unique
+  visitorName  String        @default("Visitor")
+  currentPage  String        @default("")
+  visitorIp    String        @default("")
+  userAgent    String        @default("")
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  messages     ChatMessage[]
+}
+
+model ChatMessage {
+  id          String      @id @default(auto()) @map("_id") @db.ObjectId
+  sessionId   String      @db.ObjectId
+  session     ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  senderType  String      // "visitor" | "admin"
+  content     String
+  images      String[]    // Cloudinary URLs for image attachments
+  createdAt   DateTime    @default(now())
+
+  @@index([sessionId])
+}
+
+// ──────────────────────────────────────────────
+// WhatsApp Auth State (Baileys — persisted in MongoDB)
+// ──────────────────────────────────────────────
+
+model WaAuthState {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  key       String   @unique  // e.g. "creds" | "pre-key-123" | "session-abc"
+  value     String   // JSON-serialised Baileys auth data
+  updatedAt DateTime @updatedAt
+}
+
+// ──────────────────────────────────────────────
+// KYC (Know Your Customer)
+// ──────────────────────────────────────────────
+
+model KYC {
+  id                 String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId             String    @unique @db.ObjectId
+  user               User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status             String    @default("not_submitted") // not_submitted | pending | approved | rejected
+  fullName           String    @default("")
+  dateOfBirth        String    @default("")
+  nationality        String    @default("")
+  address            String    @default("")
+  city               String    @default("")
+  state              String    @default("")
+  postalCode         String    @default("")
+  country            String    @default("")
+  documentType       String    @default("")
+  documentNumber     String    @default("")
+  idFrontUrl         String?
+  idBackUrl          String?
+  proofOfAddressUrl  String?
+  selfieUrl          String?
+  submittedAt        DateTime?
+  reviewedAt         DateTime?
+  reviewedBy         String?
+  adminNotes         String    @default("")
+  rejectionReason    String    @default("")
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([status])
+}

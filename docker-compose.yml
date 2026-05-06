@@ -1,0 +1,29 @@
+services:
+  frontend:
+    image: ghcr.io/droid-systems/frontend:latest
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./frontend/.env.local
+    environment:
+      - NEXT_PUBLIC_API_URL=http://172.19.43.139:4001
+      - NEXT_PUBLIC_SOCKET_URL=http://172.19.43.139:4001
+      - BACKEND_URL=http://backend:4001
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+  backend:
+    image: ghcr.io/droid-systems/backend:latest
+    ports:
+      - "4001:4001"
+    env_file:
+      - ./backend/.env
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
