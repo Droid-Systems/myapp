@@ -88,6 +88,6 @@ jobs:
     steps:
       - name: Pull and restart
         run: |
-          cd ~/myapp
-          docker-compose pull
-          docker-compose up -d
+          cd /home/droiddev/myapp
+          docker compose pull
+          docker compose up -d
